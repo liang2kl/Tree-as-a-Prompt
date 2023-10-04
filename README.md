@@ -46,18 +46,24 @@ We provide a set of experiment configurations to reproduce our results. Since `t
 
 ### Steps
 
-**Run `train.py` to train and evaluate our model.** You need to specify the provided configuration file (in `config/train`), your OpenAI API key, training sizes and loss parameters. The loss parameters for each experiment are listed below.
+**Before running experiments, set `OPENAI_API_KEY` environment variable.** The key can also be set via command-line arguments or configuration files, but environment variable is the most convenient way.
+
+```bash
+export OPENAI_API_KEY=sk-xxx
+```
+
+**Run `train.py` to train and evaluate our model.** You need to specify the provided configuration file (in `config/train`), training sizes and loss parameters. The loss parameters for each experiment are listed below.
 
 ```
-python train.py --config config/train/<config-name>.yml --openai-api-key <your-openai-api-key> --train-sizes <size> --loss-lambda <lambda> --loss-mu <mu>
+python train.py --config config/train/<config-name>.yml --train-sizes <size> --loss-lambda <lambda> --loss-mu <mu>
 ```
 
 As hyperparameters are tuned for each size, you need to run the experiments for each size separately.
 
-**Run `evaluate.py` to evaluate baselines.** You need to specify the provided configuration file (in `config/evaluate`), your OpenAI API key and whether to incorporate decision rules from the tree (`--use-tree-rules`).
+**Run `evaluate.py` to evaluate baselines.** You need to specify the provided configuration file (in `config/evaluate`) and whether to incorporate decision rules from the tree (`--use-tree-rules`).
 
 ```
-python3 evaluate.py --config config/evaluate/<config-name>.yml --openai-api-key <your-openai-api-key> --use-tree-rules <0|1>
+python3 evaluate.py --config config/evaluate/<config-name>.yml --use-tree-rules <0|1>
 ```
 
 For more details about the experiment settings, please refer to the [Experiment Settings](#experiment-settings) section.
@@ -104,11 +110,11 @@ The hyperparameters used in these experiments are listed in the following table.
 
 ```bash
 # OT/LLM+OT
-python3 train.py --config config/train/chatgpt-diabetes.yml --openai-api-key sk-xxx --train-sizes 8 --loss-lambda 4 --loss-mu 0.2
+python3 train.py --config config/train/chatgpt-diabetes.yml --train-sizes 8 --loss-lambda 4 --loss-mu 0.2
 # LLM
-python3 evaluate.py --config config/evaluate/chatgpt-diabetes.yml --openai-api-key sk-xxx --use-tree-rules 0
+python3 evaluate.py --config config/evaluate/chatgpt-diabetes.yml --use-tree-rules 0
 # DT/LLM+DT
-python3 evaluate.py --config config/evaluate/chatgpt-diabetes.yml --openai-api-key sk-xxx --use-tree-rules 1
+python3 evaluate.py --config config/evaluate/chatgpt-diabetes.yml --use-tree-rules 1
 # XGB
 python3 evaluate.py --config config/evaluate/xgboost-diabetes.yml
 ```
@@ -134,7 +140,7 @@ The hyperparameters used in these experiments are listed in the following table.
 
 ```bash
 # OT/LLM+OT
-python3 train.py --config config/train/chatgpt-diabetes-multiple.yml --openai-api-key sk-xxx --train-sizes 8 --loss-lambda 1 --loss-mu 0.2
+python3 train.py --config config/train/chatgpt-diabetes-multiple.yml --train-sizes 8 --loss-lambda 1 --loss-mu 0.2
 # RF
 python3 evaluate.py --config config/evaluate/random_forest-diabetes.yml --train-sizes 8
 ```
@@ -152,9 +158,9 @@ These experiments are to study the effect of unknown option and the regularizati
 
 ```bash
 # LLM+OT (no unknown class)
-python3 train.py --config config/train/chatgpt-diabetes-known.yml --openai-api-key sk-xxx --train-sizes 8 --loss-lambda 4
+python3 train.py --config config/train/chatgpt-diabetes-known.yml --train-sizes 8 --loss-lambda 4
 # LLM+OT (no regularization)
-python3 train.py --config config/train/chatgpt-diabetes.yml --openai-api-key sk-xxx --train-sizes 8 --loss-lambda 0 --loss-mu 0
+python3 train.py --config config/train/chatgpt-diabetes.yml --train-sizes 8 --loss-lambda 0 --loss-mu 0
 ```
 
 ## Experiment Settings

@@ -9,6 +9,7 @@ from sklearn.metrics import roc_auc_score
 from datetime import datetime
 import time
 import json
+import os
 
 import tree_prompt.logger as logger
 from tree_prompt.model.strategy import (
@@ -115,6 +116,13 @@ class TrainArgs(Repr):
             and not isinstance(self.runner_args, HuggingChatArgs)
         ):
             missing_fields.append("runner_args")
+
+        if (
+            self.runner == "openai_api"
+            and self.runner_args.api_base == ""
+            and self.runner_args.openai_api_key == ""
+        ):
+            missing_fields.append("runner_args.openai_api_key")
 
         if (
             self.strategy == "unknown_class"
@@ -366,6 +374,11 @@ def parse_args() -> TrainArgs:
 
     if cml_args.exp_id is not None:
         args.exp_id = cml_args.exp_id
+
+    # read openai api key from env
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if openai_api_key:
+        runner_args_dict["openai_api_key"] = openai_api_key
 
     if args.runner_args is None:
         args.runner_args = {}
