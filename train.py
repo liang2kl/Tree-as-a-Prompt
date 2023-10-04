@@ -377,7 +377,11 @@ def parse_args() -> TrainArgs:
 
     # read openai api key from env
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    if openai_api_key:
+    if (
+        openai_api_key
+        and not runner_args_dict.get("openai_api_key")
+        and not args.runner_args.get("openai_api_key")
+    ):
         runner_args_dict["openai_api_key"] = openai_api_key
 
     if args.runner_args is None:
