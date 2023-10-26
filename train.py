@@ -16,7 +16,7 @@ from tree_prompt.model.strategy import (
     TrainStrategy,
     UnknownClassStrategy,
     KnownClassStrategy,
-    RandomForestStrategy,
+    FeatureBaggingStrategy,
 )
 from tree_prompt.prompt import (
     TabularSerializer,
@@ -28,6 +28,7 @@ from tree_prompt.common_args import (
     DatasetArgs,
     OpenAIAPIArgs,
     HuggingChatArgs,
+    TogetherAPIArgs,
 )
 from tree_prompt.dataset import load_dataset, sample_balanced
 from tree_prompt.model.loss import MyLossFunction
@@ -109,11 +110,18 @@ class TrainArgs(Repr):
         missing_fields = _get_missing_fields(self)
 
         if (
-            self.runner == "openai_api"
-            and not isinstance(self.runner_args, OpenAIAPIArgs)
-        ) or (
-            self.runner == "huggingchat"
-            and not isinstance(self.runner_args, HuggingChatArgs)
+            (
+                self.runner == "openai_api"
+                and not isinstance(self.runner_args, OpenAIAPIArgs)
+            )
+            or (
+                self.runner == "huggingchat"
+                and not isinstance(self.runner_args, HuggingChatArgs)
+            )
+            or (
+                self.runner == "together_api"
+                and not isinstance(self.runner_args, TogetherAPIArgs)
+            )
         ):
             missing_fields.append("runner_args")
 
@@ -123,6 +131,13 @@ class TrainArgs(Repr):
             and self.runner_args.openai_api_key == ""
         ):
             missing_fields.append("runner_args.openai_api_key")
+
+        if (
+            self.runner == "together_api"
+            and self.runner_args.api_base == ""
+            and self.runner_args.openai_api_key == ""
+        ):
+            missing_fields.append("runner_args.together_api_key")
 
         if (
             self.strategy == "unknown_class"
@@ -158,6 +173,8 @@ class TrainArgs(Repr):
             self.runner_args = OpenAIAPIArgs()
         elif self.runner == "huggingchat":
             self.runner_args = HuggingChatArgs()
+        elif self.runner == "together_api":
+            self.runner_args = TogetherAPIArgs()
         else:
             raise ValueError("Unknown or missing runner_type: {}".format(self.runner))
 
@@ -215,6 +232,8 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--hf-username", type=str, help="huggingface username")
     parser.add_argument("--hf-password", type=str, help="huggingface password")
     parser.add_argument("--hf-cookie-dir", type=str, help="huggingface cookie dir")
+    parser.add_argument("--together-api-key", type=str, help="together api key")
+    parser.add_argument("--together-api-base", type=str, help="together api base url")
     parser.add_argument("--model-name", type=str, help="model name")
 
     # dataset
@@ -321,6 +340,10 @@ def parse_args() -> TrainArgs:
         runner_args_dict["hf_password"] = cml_args.hf_password
     if cml_args.hf_cookie_dir is not None:
         runner_args_dict["hf_cookie_dir"] = cml_args.hf_cookie_dir
+    if cml_args.together_api_key is not None:
+        runner_args_dict["together_api_key"] = cml_args.together_api_key
+    if cml_args.together_api_base is not None:
+        runner_args_dict["together_api_base"] = cml_args.together_api_base
     if cml_args.model_name is not None:
         runner_args_dict["model_name"] = cml_args.model_name
     if cml_args.timeout is not None:
@@ -414,6 +437,9 @@ def evaluate(
     final_loss = model.fit(x_train, y_train)
     elapsed = time.time() - start
 
+    if len(x_test) == 0:
+        return None
+
     llm_with_tree_results, llm_with_tree_subresults = [], None
     tree_results, tree_raw_results = [], []
 
@@ -441,10 +467,11 @@ def evaluate(
         llm_with_tree_auc = None
 
     llm_with_sub_tree_aucs = []
-    for sub_result in llm_with_tree_subresults:
-        llm_with_sub_tree_aucs.append(
-            roc_auc_score(y_test, sub_result, multi_class="ovr")
-        )
+    if llm_with_tree_subresults is not None:
+        for sub_result in llm_with_tree_subresults:
+            llm_with_sub_tree_aucs.append(
+                roc_auc_score(y_test, sub_result, multi_class="ovr")
+            )
 
     tree_auc = roc_auc_score(y_test, tree_results, multi_class="ovr")
     logger.log(
@@ -537,7 +564,7 @@ def load_args(
             args.strategy_args.hist_nbins,
         )
     elif args.strategy == "feature_bagging":
-        strategy = RandomForestStrategy(
+        strategy = FeatureBaggingStrategy(
             meta,
             runner,
             master_template,
@@ -584,6 +611,7 @@ def main():
         output_file.parent.mkdir(parents=True)
 
     if output_file.exists():
+        exit()
         date = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         target = output_file.rename(
             output_file.parent / (output_file.stem + "-" + date + output_file.suffix)
@@ -614,22 +642,27 @@ def main():
 
         for train_x, train_y in train_cases:
             model = Classifier(strategy)
-            (
-                llm_with_tree_auc,
-                tree_auc,
-                llm_with_sub_tree_aucs,
-                final_loss,
-                llm_with_tree_results,
-                tree_results,
-                tree_raw_results,
-                llm_with_tree_subresults,
-                elapsed,
-            ) = evaluate(train_x, train_y, test_x, test_y, model, args.test_batch)
+            result = evaluate(train_x, train_y, test_x, test_y, model, args.test_batch)
+            if result is None:
+                result_dict = {
+                    "model": model.export(),
+                }
+            else:
+                (
+                    llm_with_tree_auc,
+                    tree_auc,
+                    llm_with_sub_tree_aucs,
+                    final_loss,
+                    llm_with_tree_results,
+                    tree_results,
+                    tree_raw_results,
+                    llm_with_tree_subresults,
+                    elapsed,
+                ) = result
 
-            logger.log("Training time: {}".format(elapsed))
+                logger.log("Training time: {}".format(elapsed))
 
-            results.setdefault(train_size, []).append(
-                {
+                result_dict = {
                     "llm_tree": llm_with_tree_auc,
                     "tree": tree_auc,
                     "sub_trees": llm_with_sub_tree_aucs,
@@ -642,7 +675,8 @@ def main():
                     "model": model.export(),
                     "train_elapsed": elapsed,
                 }
-            )
+
+            results.setdefault(train_size, []).append(result_dict)
             bar.update(1)
 
             # Store results each round to avoid losing data

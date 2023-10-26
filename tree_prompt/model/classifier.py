@@ -1,19 +1,12 @@
-from .strategy import TrainStrategy, RandomForestStrategy
+from .strategy import TrainStrategy, FeatureBaggingStrategy
 from .. import logger
 
 
 class Classifier:
-    """ """
     def __init__(self, strategy: TrainStrategy) -> None:
         self.strategy = strategy
 
     def fit(self, x, y) -> float:
-        """
-
-        :param x: 
-        :param y: 
-
-        """
         logger.log("Train data:")
         for xx, yy in zip(x.tolist(), y.tolist()):
             logger.log(f"{xx} -> {yy}")
@@ -32,12 +25,7 @@ class Classifier:
         return last_loss
 
     def predict(self, x) -> tuple[list[int], list[int], list[int]]:
-        """
-
-        :param x: 
-
-        """
-        if type(self.strategy) == RandomForestStrategy:
+        if type(self.strategy) == FeatureBaggingStrategy:
             sub_results = self.strategy.predict_llm_with_all_subtrees(
                 x, with_examples=True
             )
@@ -56,10 +44,4 @@ class Classifier:
         return self.strategy.export()
 
     def to_graphviz(self, features: list[str], classes: list[str]):
-        """
-
-        :param features: list[str]: 
-        :param classes: list[str]: 
-
-        """
         return self.strategy.get_tree().to_graphviz(features, classes)

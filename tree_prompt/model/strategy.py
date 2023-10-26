@@ -436,6 +436,7 @@ class UnknownClassStrategy(TrainStrategy):
             loss_f=loss_f,
             max_depth=tree.max_depth,
             train_batch=1024,
+            hist_nbins=1024,
         )
         strategy.tree = tree
 
@@ -454,7 +455,7 @@ class KnownClassStrategy(UnknownClassStrategy):
         return [*range(self._meta.label_count())]
 
 
-class RandomForestStrategy(TrainStrategy):
+class FeatureBaggingStrategy(TrainStrategy):
     def __init__(
         self,
         all_meta: DatasetMeta,

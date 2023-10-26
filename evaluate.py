@@ -10,6 +10,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 import yaml
 from pathlib import Path
+import os
 
 import tree_prompt.prompt as prompt
 import tree_prompt.dataset as dataset
@@ -32,6 +33,7 @@ from tree_prompt.common_args import (
     DatasetArgs,
     OpenAIAPIArgs,
     HuggingChatArgs,
+    TogetherAPIArgs,
 )
 from tree_prompt.dataset import DatasetMeta, load_dataset, sample_balanced
 
@@ -83,7 +85,7 @@ class EvaluateArgs:
     def __init__(self) -> None:
         self.exp_name: str = None
         self.runner: str = None
-        self.runner_args: OpenAIAPIArgs | HuggingChatArgs = None
+        self.runner_args: OpenAIAPIArgs | HuggingChatArgs | TogetherAPIArgs = None
         self.tree_type: str = None
         self.tree_args: SimpleTreeArgs | XGBoostArgs = None
         self.tree_only: bool = False
@@ -104,13 +106,21 @@ class EvaluateArgs:
         missing_fields = _get_missing_fields(self)
 
         if (
-            self.runner == "openai_api"
-            and not isinstance(self.runner_args, OpenAIAPIArgs)
-        ) or (
-            self.runner == "huggingchat"
-            and not isinstance(self.runner_args, HuggingChatArgs)
+            (
+                self.runner == "openai_api"
+                and not isinstance(self.runner_args, OpenAIAPIArgs)
+            )
+            or (
+                self.runner == "huggingchat"
+                and not isinstance(self.runner_args, HuggingChatArgs)
+            )
+            or (
+                self.runner == "together_api"
+                and not isinstance(self.runner_args, TogetherAPIArgs)
+            )
         ):
             missing_fields.append("runner_args")
+
         elif self.runner_args:
             missing_fields += _get_missing_fields(self.runner_args, "runner_args")
 
@@ -174,6 +184,8 @@ class EvaluateArgs:
                 self.runner_args = OpenAIAPIArgs()
             elif self.runner == "huggingchat":
                 self.runner_args = HuggingChatArgs()
+            elif self.runner == "together_api":
+                self.runner_args = TogetherAPIArgs()
             else:
                 raise ValueError("Unknown runner type: {}".format(self.runner))
 
@@ -217,7 +229,8 @@ def parse_args() -> EvaluateArgs:
     parser.add_argument("--hf-username", type=str, help="huggingface username")
     parser.add_argument("--hf-password", type=str, help="huggingface password")
     parser.add_argument("--hf-cookie-dir", type=str, help="huggingface cookie dir")
-
+    parser.add_argument("--together-api-key", type=str, help="together api key")
+    parser.add_argument("--together-api-base", type=str, help="together api base url")
     parser.add_argument("--model-name", type=str, help="model name")
 
     parser.add_argument(
@@ -332,6 +345,10 @@ def parse_args() -> EvaluateArgs:
         runner_args_dict["hf_password"] = cml_args.hf_password
     if cml_args.hf_cookie_dir is not None:
         runner_args_dict["hf_cookie_dir"] = cml_args.hf_cookie_dir
+    if cml_args.together_api_key is not None:
+        runner_args_dict["together_api_key"] = cml_args.together_api_key
+    if cml_args.together_api_base is not None:
+        runner_args_dict["together_api_base"] = cml_args.together_api_base
     if cml_args.model_name is not None:
         runner_args_dict["model_name"] = cml_args.model_name
     if cml_args.tree_type is not None:
@@ -383,6 +400,15 @@ def parse_args() -> EvaluateArgs:
 
     if cml_args.exp_id is not None:
         args.exp_id = cml_args.exp_id
+
+    # read openai api key from env
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if (
+        openai_api_key
+        and not runner_args_dict.get("openai_api_key")
+        and not args.runner_args.get("openai_api_key")
+    ):
+        runner_args_dict["openai_api_key"] = openai_api_key
 
     if args.runner_args is None:
         args.runner_args = {}
@@ -476,7 +502,7 @@ def evaluate(
             tree_accuracy = tree_accuracies
         else:
             tree_predict, rules = tree_model.predict(
-                x_train, y_train, x_test, export_rules=False
+                x_train, y_train, x_test, export_rules=True
             )
             tree_auc = sklearn.metrics.roc_auc_score(y_test, tree_predict)
             tree_accuracy = calc_accuracy(y_test, tree_predict)
@@ -540,7 +566,7 @@ def evaluate(
 
     result_dict = {}
     result_dict["record"] = {"prompt": prompts[0]}
-    result_dict["labels"] = labels
+    result_dict["labels"] = [int(y) for y in y_test]
     result_dict["results"] = [meta.get_label_value(r) for r in results]
     result_dict["auc"] = auc
     result_dict["accuracy"] = acc
@@ -626,6 +652,17 @@ def main():
                 args.runner_args.hf_cookie_dir,
                 args.runner_args.request_interval,
                 args.runner_args.timeout,
+            )
+        elif args.runner == "together_api":
+            from tree_prompt.runner.together_api import TogetherAPIParallelRunner
+
+            runner = TogetherAPIParallelRunner(
+                args.runner_args.api_base,
+                args.runner_args.model_name,
+                args.runner_args.together_api_key,
+                args.runner_args.request_interval,
+                args.runner_args.timeout,
+                args.runner_args.parallel_batch_size,
             )
         else:
             raise ValueError("Unknown runner type: {}".format(args.runner))

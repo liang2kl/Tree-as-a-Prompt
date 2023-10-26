@@ -29,3 +29,13 @@ class HuggingChatArgs(_Repr):
         self.request_interval: float = 1
         self.timeout: int = 120
         self.parallel_batch_size: int = 6
+
+
+class TogetherAPIArgs(_Repr):
+    def __init__(self) -> None:
+        self.api_base: str = ""
+        self.model_name: str = None
+        self.together_api_key: str = ""
+        self.request_interval: float = 0.2
+        self.timeout: int = 30
+        self.parallel_batch_size: int = 6

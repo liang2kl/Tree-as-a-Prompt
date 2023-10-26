@@ -30,8 +30,10 @@ class OpenAIAPIRunner(Runner):
                         max_tokens=2048,
                         temperature=0.0,  # for reproducibility
                     )
+                # TODO: real error handling
                 except BaseException as e:
-                    if f"{e}".find("Rate limit reached") != -1:
+                    err_msg = f"{e}"
+                    if err_msg.find("Rate limit reached") != -1:
                         retry_count += 1
                         # backoff
                         delay = 0.5 * 2**retry_count
@@ -40,13 +42,16 @@ class OpenAIAPIRunner(Runner):
                         )
                         time.sleep(delay)
                         continue
+                    elif err_msg.find("maximum context length") != -1:
+                        logger.log("Exceed context length, skipping...")
+                        result = ""
+                        break
                     raise e
 
+                result = response["choices"][0]["message"]["content"]
+                # usage = response["usage"]
+                # print(usage)
                 break
-
-            result = response["choices"][0]["message"]["content"]
-            # usage = response["usage"]
-            # print(usage)
 
             yield [result]
 
